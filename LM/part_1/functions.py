@@ -155,7 +155,7 @@ def eval_loop(data, eval_criterion, model, optimizer):
 
 def main_exp(save_path, exp_name, model, optimizer, clip, train_loader, val_loader, test_loader, lang, scheduler=None,
              avgSGD=False):
-    n_epochs = 35 if not avgSGD else 100
+    n_epochs = 100
     patience = 3 if not avgSGD else 10
     non_monotone_interval = 5
 

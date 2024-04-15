@@ -39,7 +39,7 @@ class VariationalDropout(nn.Module):
         if not self.training and not self.dropout:
             return x
         m = x.new(1, x.size(1), x.size(2)).bernoulli_(1 - self.dropout)
-        mask = m / (1 - self.dropout)
+        mask = m.detach() / (1 - self.dropout)
         mask = mask.expand_as(x)
         return mask * x
 

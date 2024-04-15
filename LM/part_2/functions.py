@@ -14,6 +14,7 @@ from utils import *
 from model import *
 from main import DEVICE
 
+
 def init_weights(mat):
     for m in mat.modules():
         if type(m) in [nn.GRU, nn.LSTM, nn.RNN]:
@@ -148,7 +149,7 @@ def eval_loop(data, eval_criterion, model, optimizer):
 
 def main_exp(save_path, exp_name, model, optimizer, clip, train_loader, val_loader, test_loader, lang, scheduler=None,
              avgSGD=False):
-    n_epochs = 35 if not avgSGD else 100
+    n_epochs = 100
     patience = 3 if not avgSGD else 10
     non_monotone_interval = 5
 
@@ -196,7 +197,7 @@ def main_exp(save_path, exp_name, model, optimizer, clip, train_loader, val_load
             if patience <= 0:  # Early stopping with patience
                 break  # Not nice but it keeps the code clean
 
-            if (avgSGD == True and optimizer.__class__.__name__ == "SGD" and "t0" not in optimizer.param_groups[0]
+            if (avgSGD is True and optimizer.__class__.__name__ == "SGD" and "t0" not in optimizer.param_groups[0]
                     and (len(val_losses) > non_monotone_interval and val_loss > min(
                         val_losses[:-non_monotone_interval]))):
                 print("\nSwitching to ASGD")

@@ -37,7 +37,7 @@ def init_weights(mat):
 
 
 def run_experiments(to_run):
-    save_path = "./"
+    save_path = "./runs/"
     train_raw = read_file(save_path + "dataset/PennTreeBank/ptb.train.txt")
     dev_raw = read_file(save_path + "dataset/PennTreeBank/ptb.valid.txt")
     test_raw = read_file(save_path + "dataset/PennTreeBank/ptb.test.txt")
@@ -61,34 +61,32 @@ def run_experiments(to_run):
 
     vocab_len = len(lang.word2id)
 
-    lr = 2.3
-    clip = 5
-
     # For Weight Tying we use the same number of hid and emb
-    hid_size = emb_size = 300
-    if to_run[4]['run']:
-        model = LM_LSTM_WEIGHT_TYING(emb_size, hid_size, vocab_len, pad_index=lang.word2id["<pad>"], emb_dropout=0.1,
-                                     out_dropout=0.1).to(DEVICE)
-        model.apply(init_weights)
-        optimizer = optim.SGD(model.parameters(), lr=lr)
-        main_exp(save_path, to_run[4]['name'], model, optimizer, clip, train_loader, val_loader, test_loader,
-                 lang)
+    default_options = {
+        'hid_size': 300,
+        'emb_size': 300,
+        'lr': 2.3,
+        'clip': 5,
+        'emb_dropout': 0.1,
+        'out_dropout': 0.1,
+        'variational_dropout': False,
+        'avgSGD': False,
+        'optimizer': optim.SGD,
+        'weight_tying': True,
+    }
 
-    if to_run[5]['run']:
-        model = LM_LSTM_VARIATIONAL_DROPOUT(emb_size, hid_size, vocab_len, pad_index=lang.word2id["<pad>"],
-                                            emb_dropout=0.1, out_dropout=0.1).to(DEVICE)
-        model.apply(init_weights)
-        optimizer = optim.SGD(model.parameters(), lr=lr)
-        main_exp(save_path, to_run[5]['name'], model, optimizer, clip, train_loader, val_loader, test_loader,
-                 lang)
-
-    if to_run[6]['run']:
-        model = LM_LSTM_VARIATIONAL_DROPOUT(emb_size, hid_size, vocab_len, pad_index=lang.word2id["<pad>"],
-                                            emb_dropout=0.1, out_dropout=0.1).to(DEVICE)
-        model.apply(init_weights)
-        optimizer = optim.SGD(model.parameters(), lr=lr)
-        main_exp(save_path, to_run[6]['name'], model, optimizer, clip, train_loader, val_loader,
-                 test_loader, lang, avgSGD=True)
+    for experiment in to_run:
+        if to_run[experiment]:
+            arg = default_options | to_run[experiment]
+            model = LM_LSTM(arg['emb_size'], arg['hid_size'], vocab_len, pad_index=lang.word2id["<pad>"],
+                            out_dropout=arg['out_dropout'], emb_dropout=arg['emb_dropout'],
+                            variational_dropout=arg['variational_dropout'], weight_tying=arg['weight_tying']).to(DEVICE)
+            model.apply(init_weights)
+            optimizer = arg['optimizer'](model.parameters(), lr=arg['lr'])
+            main_exp(save_path, experiment, model, optimizer, arg['clip'], train_loader, val_loader, test_loader, lang,
+                     avgSGD=arg['avgSGD'])
+        else:
+            print(f"Skipping {experiment}")
 
 
 def log_values(writer, step, loss, perplexity, prefix):

@@ -3,7 +3,6 @@ import numpy as np
 import math
 import copy
 import os
-import sys
 from tqdm import tqdm
 from datetime import datetime
 from functools import partial
@@ -13,6 +12,7 @@ from torch.utils.tensorboard import SummaryWriter
 from utils import *
 from model import *
 from main import DEVICE
+
 
 def init_weights(mat):
     for m in mat.modules():
@@ -36,7 +36,7 @@ def init_weights(mat):
 
 
 def run_experiments(to_run):
-    save_path = "./"
+    save_path = "./runs/"
     train_raw = read_file(save_path + "dataset/PennTreeBank/ptb.train.txt")
     dev_raw = read_file(save_path + "dataset/PennTreeBank/ptb.valid.txt")
     test_raw = read_file(save_path + "dataset/PennTreeBank/ptb.test.txt")
@@ -60,42 +60,24 @@ def run_experiments(to_run):
 
     vocab_len = len(lang.word2id)
 
-    hid_size = 200
-    emb_size = 300
-    lr = 2.3
-    clip = 5
+    default_options = {
+        'model': LM_LSTM,
+        'hid_size': 200,
+        'emb_size': 300,
+        'lr': 2.3,
+        'clip': 5,
+        'emb_dropout': 0,
+        'out_dropout': 0,
+    }
 
-    if to_run[0]['run']:
-        model = LM_RNN(emb_size, hid_size, vocab_len, pad_index=lang.word2id["<pad>"], emb_dropout=0.1,
-                       out_dropout=0.1).to(DEVICE)
+    for experiment in to_run:
+        arg = default_options | to_run[experiment]
+        print(arg)
+        model = arg['model'](arg['emb_size'], arg['hid_size'], vocab_len, pad_index=lang.word2id["<pad>"],
+                             out_dropout=arg['out_dropout'], emb_dropout=arg['emb_dropout']).to(DEVICE)
         model.apply(init_weights)
-        optimizer = optim.SGD(model.parameters(), lr=lr)
-        main_exp(save_path, to_run[0]['name'], model, optimizer, clip, train_loader, val_loader, test_loader,
-                 lang)
-
-    if to_run[1]['run']:
-        model = LM_LSTM(emb_size, hid_size, vocab_len, pad_index=lang.word2id["<pad>"], emb_dropout=0.1,
-                        out_dropout=0.1).to(DEVICE)
-        model.apply(init_weights)
-        optimizer = optim.SGD(model.parameters(), lr=lr)
-        main_exp(save_path, to_run[1]['name'], model, optimizer, clip, train_loader, val_loader, test_loader,
-                 lang)
-
-    if to_run[2]['run']:
-        model = LM_LSTM_DROPOUT(emb_size, hid_size, vocab_len, pad_index=lang.word2id["<pad>"], emb_dropout=0.1,
-                                out_dropout=0.1).to(DEVICE)
-        model.apply(init_weights)
-        optimizer = optim.SGD(model.parameters(), lr=lr)
-        main_exp(save_path, to_run[2]['name'], model, optimizer, clip, train_loader, val_loader, test_loader,
-                 lang)
-
-    if to_run[3]['run']:
-        model = LM_LSTM_DROPOUT(emb_size, hid_size, vocab_len, pad_index=lang.word2id["<pad>"], emb_dropout=0.1,
-                                out_dropout=0.1).to(DEVICE)
-        model.apply(init_weights)
-        optimizer = optim.AdamW(model.parameters(), lr=0.001)
-        main_exp(save_path, to_run[3]['name'], model, optimizer, clip, train_loader, val_loader, test_loader,
-                 lang)
+        optimizer = arg['optimizer'](model.parameters(), lr=arg['lr'])
+        main_exp(save_path, experiment, model, optimizer, arg['clip'], train_loader, val_loader, test_loader, lang)
 
 
 def log_values(writer, step, loss, perplexity, prefix):
@@ -153,11 +135,9 @@ def eval_loop(data, eval_criterion, model, optimizer):
     return ppl, loss_to_return
 
 
-def main_exp(save_path, exp_name, model, optimizer, clip, train_loader, val_loader, test_loader, lang, scheduler=None,
-             avgSGD=False):
+def main_exp(save_path, exp_name, model, optimizer, clip, train_loader, val_loader, test_loader, lang, scheduler=None):
     n_epochs = 100
-    patience = 3 if not avgSGD else 10
-    non_monotone_interval = 5
+    patience = 3
 
     d = datetime.now()
     strftime = d.strftime("%Y-%m-%d_%H-%M")
@@ -177,7 +157,7 @@ def main_exp(save_path, exp_name, model, optimizer, clip, train_loader, val_load
     f = open(runpath + 'results.txt', "w")
     file_path = runpath + exp_name + '.pt'
     pbar = tqdm(range(1, n_epochs), file=f)
-    # If the PPL is too high try to change the learning rate
+
     for epoch in pbar:
         train_ppl, train_loss = train_loop(train_loader, optimizer, criterion_train, model, clip, scheduler)
 
@@ -196,7 +176,7 @@ def main_exp(save_path, exp_name, model, optimizer, clip, train_loader, val_load
             if val_ppl < best_ppl:  # the lower, the better
                 best_ppl = val_ppl
                 best_model = copy.deepcopy(model).to('cpu')
-                patience = 3 if not avgSGD else 10
+                patience = 3
             else:
                 patience -= 1
 

@@ -91,9 +91,9 @@ def run_experiments(to_run):
                             variational_dropout=arg['variational_dropout'], weight_tying=arg['weight_tying']).to(DEVICE)
             model.load_state_dict(torch.load('./bin/' + experiment + '.pt'))
             optimizer = arg['optimizer'](model.parameters(), lr=arg['lr'])
-            eval_criterion = nn.CrossEntropyLoss(ignore_index=lang.word2id["<pad>"])
+            eval_criterion = nn.CrossEntropyLoss(ignore_index=lang.word2id["<pad>"], reduction='sum')
             test_ppl, _ = eval_loop(test_loader, eval_criterion, model, optimizer)
-            print(f'Test ppl: {test_ppl}')
+            print(f'Test ppl: {test_ppl:2f}')
 
 
 def log_values(writer, step, loss, perplexity, prefix):
@@ -211,8 +211,8 @@ def main_exp(save_path, exp_name, model, optimizer, clip, train_loader, val_load
 
     best_model.to(DEVICE)
     final_ppl, _ = eval_loop(test_loader, criterion_eval, best_model, optimizer)
-    print('Test ppl: ', final_ppl)
-    f.write(f'Test ppl: {final_ppl}')
+    print(f'Test ppl: {final_ppl:2f}')
+    f.write(f'Test ppl: {final_ppl:2f}')
     torch.save(best_model.state_dict(), file_path)
     f.close()
     writer.close()

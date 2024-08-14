@@ -37,7 +37,7 @@ def init_weights(mat):
 
 
 def run_experiments(to_run):
-    save_path = "./runs/"
+    save_path = "./"
     train_raw = read_file(save_path + "dataset/PennTreeBank/ptb.train.txt")
     dev_raw = read_file(save_path + "dataset/PennTreeBank/ptb.valid.txt")
     test_raw = read_file(save_path + "dataset/PennTreeBank/ptb.test.txt")
@@ -76,8 +76,8 @@ def run_experiments(to_run):
     }
 
     for experiment in to_run:
+        arg = default_options | to_run[experiment]
         if to_run[experiment]:
-            arg = default_options | to_run[experiment]
             model = LM_LSTM(arg['emb_size'], arg['hid_size'], vocab_len, pad_index=lang.word2id["<pad>"],
                             out_dropout=arg['out_dropout'], emb_dropout=arg['emb_dropout'],
                             variational_dropout=arg['variational_dropout'], weight_tying=arg['weight_tying']).to(DEVICE)
@@ -86,7 +86,14 @@ def run_experiments(to_run):
             main_exp(save_path, experiment, model, optimizer, arg['clip'], train_loader, val_loader, test_loader, lang,
                      avgSGD=arg['avgSGD'])
         else:
-            print(f"Skipping {experiment}")
+            model = LM_LSTM(arg['emb_size'], arg['hid_size'], vocab_len, pad_index=lang.word2id["<pad>"],
+                            out_dropout=arg['out_dropout'], emb_dropout=arg['emb_dropout'],
+                            variational_dropout=arg['variational_dropout'], weight_tying=arg['weight_tying']).to(DEVICE)
+            model.load_state_dict(torch.load('./bin/' + experiment + '.pt'))
+            optimizer = arg['optimizer'](model.parameters(), lr=arg['lr'])
+            eval_criterion = nn.CrossEntropyLoss(ignore_index=lang.word2id["<pad>"])
+            test_ppl, _ = eval_loop(test_loader, eval_criterion, model, optimizer)
+            print(f'Test ppl: {test_ppl}')
 
 
 def log_values(writer, step, loss, perplexity, prefix):
@@ -154,7 +161,7 @@ def main_exp(save_path, exp_name, model, optimizer, clip, train_loader, val_load
     d = datetime.now()
     strftime = d.strftime("%Y-%m-%d_%H-%M")
 
-    writer = SummaryWriter(log_dir=f"{save_path}runs/{exp_name}_{strftime}")
+    writer = SummaryWriter(log_dir=f"{save_path}runs/{exp_name}/{strftime}")
     criterion_train = nn.CrossEntropyLoss(ignore_index=lang.word2id["<pad>"])
     criterion_eval = nn.CrossEntropyLoss(ignore_index=lang.word2id["<pad>"], reduction='sum')
 
@@ -164,8 +171,8 @@ def main_exp(save_path, exp_name, model, optimizer, clip, train_loader, val_load
     best_ppl = math.inf
     best_model = None
 
-    runpath = save_path + exp_name + '/' + strftime + '/'
-    os.makedirs(runpath)
+    runpath = save_path + 'runs/' + exp_name + '/' + strftime + '/'
+    os.makedirs(runpath, exist_ok=True)
     f = open(runpath + 'results.txt', "w")
     file_path = runpath + exp_name + '.pt'
     pbar = tqdm(range(1, n_epochs), file=f)

@@ -1,18 +1,18 @@
-import torch.optim as optim
-import numpy as np
-import math
 import copy
+import math
 import os
-import sys
-from tqdm import tqdm
 from datetime import datetime
 from functools import partial
+
+import numpy as np
+import torch.optim as optim
 from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
+from tqdm import tqdm
 
-from utils import *
-from model import *
 from main import DEVICE
+from model import *
+from utils import *
 
 
 def init_weights(mat):

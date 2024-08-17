@@ -63,7 +63,7 @@ def run_experiments(to_run):
         'clip': 5,
         'dropout': 0,
         'bidirectional': False,
-        'runs': 1,
+        'n_runs': 1,
     }
 
     for experiment in to_run:
@@ -81,7 +81,7 @@ def run_experiments(to_run):
 
             slot_f1s, intent_acc = [], []
             results_test, intent_test = [], []
-            for _ in range(to_run[experiment]['runs']):
+            for _ in range(arg['n_runs']):
                 model = ModelIAS(arg['emb_size'], out_slot, out_int, arg['hid_size'], vocab_len, pad_index=PAD_TOKEN,
                                  bidirectional=arg['bidirectional'], dropout=arg['dropout']).to(DEVICE)
                 model.apply(init_weights)

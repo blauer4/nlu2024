@@ -101,7 +101,7 @@ def run_experiments(to_run):
         if to_run[experiment]['run']:
             f = open(runpath + 'results.txt', "a")
 
-        if to_run[experiment]['n_runs'] > 1:
+        if arg['n_runs'] > 1:
             slot_f1s = np.asarray(slot_f1s)
             intent_acc = np.asarray(intent_acc)
 

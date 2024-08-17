@@ -34,9 +34,7 @@ class ModelIAS(nn.Module):
     def forward(self, utterance, seq_lengths):
         # utterance.size() = batch_size X seq_len
         utt_emb = self.embedding(utterance)  # utt_emb.size() = batch_size X seq_len X emb_size
-        #
         utt_emb = self.dropout(utt_emb)
-        utt_emb = utt_emb.permute(1, 0, 2)  # utt_emb.size() = seq_len X batch_size X emb_size
 
         # pack_padded_sequence avoid computation over pad tokens reducing the computational cost
         packed_input = pack_padded_sequence(utt_emb, seq_lengths.cpu().numpy(), batch_first=True)

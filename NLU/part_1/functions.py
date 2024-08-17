@@ -68,52 +68,56 @@ def run_experiments(to_run):
 
     for experiment in to_run:
         arg = default_options | to_run[experiment]
-        if to_run[experiment]['run']:
-            out_slot = len(lang.slot2id)
-            out_int = len(lang.intent2id)
-            vocab_len = len(lang.word2id)
-            d = datetime.now()
-            strftime = d.strftime("%Y-%m-%d_%H-%M")
-            writer = SummaryWriter(log_dir=f"{save_path}runs/{experiment}/{strftime}/")
-            runpath = save_path + 'runs/' + experiment + '/' + strftime + '/'
-            os.makedirs(runpath, exist_ok=True)
-            file_path = runpath + experiment + '.pt'
 
-            slot_f1s, intent_acc = [], []
-            results_test, intent_test = [], []
-            for _ in range(arg['n_runs']):
-                model = ModelIAS(arg['emb_size'], out_slot, out_int, arg['hid_size'], vocab_len, pad_index=PAD_TOKEN,
-                                 bidirectional=arg['bidirectional'], dropout=arg['dropout']).to(DEVICE)
+        out_slot = len(lang.slot2id)
+        out_int = len(lang.intent2id)
+        vocab_len = len(lang.word2id)
+
+        d = datetime.now()
+        strftime = d.strftime("%Y-%m-%d_%H-%M")
+        writer = SummaryWriter(log_dir=f"{save_path}runs/{experiment}/{strftime}/")
+        runpath = save_path + 'runs/' + experiment + '/' + strftime + '/'
+        os.makedirs(runpath, exist_ok=True)
+        file_path = runpath + experiment + '.pt'
+
+        slot_f1s, intent_acc = [], []
+        results_test, intent_test = [], []
+        for _ in range(arg['n_runs']):
+            model = ModelIAS(arg['emb_size'], out_slot, out_int, arg['hid_size'], vocab_len, pad_index=PAD_TOKEN,
+                             bidirectional=arg['bidirectional'], dropout=arg['dropout']).to(DEVICE)
+            if to_run[experiment]['run']:
                 model.apply(init_weights)
                 results_test, intent_test = train((writer, file_path), lang, model, PAD_TOKEN, train_loader, val_loader,
                                                   test_loader, arg['lr'], arg['clip'])
-                intent_acc.append(intent_test['accuracy'])
-                slot_f1s.append(results_test['total']['f'])
+            else:
+                model.load_state_dict(torch.load('./bin/' + experiment + '.pt'))
+                criterion_slots = nn.CrossEntropyLoss(ignore_index=PAD_TOKEN)
+                criterion_intents = nn.CrossEntropyLoss()
+                results_test, intent_test, _ = eval_loop(test_loader, criterion_slots, criterion_intents, model, lang)
 
+            intent_acc.append(intent_test['accuracy'])
+            slot_f1s.append(results_test['total']['f'])
+
+        if to_run[experiment]['run']:
             f = open(runpath + 'results.txt', "a")
 
-            if to_run[experiment]['runs'] > 1:
-                slot_f1s = np.asarray(slot_f1s)
-                intent_acc = np.asarray(intent_acc)
+        if to_run[experiment]['n_runs'] > 1:
+            slot_f1s = np.asarray(slot_f1s)
+            intent_acc = np.asarray(intent_acc)
 
-                print(f'Slot F1: {slot_f1s.mean():.3f} +- {slot_f1s.std():.3f}')
-                print(f'Intent Acc: {intent_acc.mean():.3f} +- {intent_acc.std():.3f}')
-                f.write(
-                    f'Slot F1: {slot_f1s.mean():.3f} +- {slot_f1s.std():.3f}\nIntent Acc: {intent_acc.mean():.3f} +- {intent_acc.std():.3f}\n')
-            else:
-                print(f"Slot F1: {results_test['total']['f']}")
-                print(f"Intent Accuracy: {intent_test['accuracy']}")
-                f.write(f"Slot F1: {results_test['total']['f']}\nIntent Accuracy: {intent_test['accuracy']}\n")
-            f.close()
+            print(f'Slot F1: {slot_f1s.mean():.3f} +- {slot_f1s.std():.3f}')
+            print(f'Intent Acc: {intent_acc.mean():.3f} +- {intent_acc.std():.3f}')
+            if to_run[experiment]['run']:
+                f.write(f'Slot F1: {slot_f1s.mean():.3f} +- {slot_f1s.std():.3f}\nIntent Acc: {intent_acc.mean():.3f} '
+                        f'+- {intent_acc.std():.3f}\n')
         else:
-            # model = ModelIAS(arg['emb_size'], arg['hid_size'], vocab_len, pad_index=lang.word2id["<pad>"],
-            #                  out_dropout=arg['out_dropout'], emb_dropout=arg['emb_dropout']).to(DEVICE)
-            # model.load_state_dict(torch.load('./bin/' + experiment + '.pt'))
-            # optimizer = arg['optimizer'](model.parameters(), lr=arg['lr'])
-            # eval_criterion = nn.CrossEntropyLoss(ignore_index=lang.word2id["<pad>"], reduction='sum')
-            # test_ppl, _ = eval_loop(test_loader, eval_criterion, model, optimizer)
-            # print(f'Test ppl: {test_ppl:.2f}')
-            pass
+            print(f"Slot F1: {results_test['total']['f']}")
+            print(f"Intent Accuracy: {intent_test['accuracy']}")
+            if to_run[experiment]['run']:
+                f.write(f"Slot F1: {results_test['total']['f']}\nIntent Accuracy: {intent_test['accuracy']}\n")
+
+        if to_run[experiment]['run']:
+            f.close()
 
 
 def log_values(writer, step, loss, prefix, f1_score=None):

@@ -61,8 +61,9 @@ def run_experiments(to_run):
         'emb_size': 300,
         'lr': 0.0001,
         'clip': 5,
-        'emb_dropout': 0,
-        'out_dropout': 0,
+        'dropout': 0,
+        'bidirectional': False,
+        'runs': 1,
     }
 
     for experiment in to_run:
@@ -81,8 +82,8 @@ def run_experiments(to_run):
             slot_f1s, intent_acc = [], []
             results_test, intent_test = [], []
             for _ in range(to_run[experiment]['runs']):
-                model = ModelIAS(arg['emb_size'], out_slot, out_int, arg['hid_size'], vocab_len,
-                                 pad_index=PAD_TOKEN).to(DEVICE)
+                model = ModelIAS(arg['emb_size'], out_slot, out_int, arg['hid_size'], vocab_len, pad_index=PAD_TOKEN,
+                                 bidirectional=arg['bidirectional'], dropout=arg['dropout']).to(DEVICE)
                 model.apply(init_weights)
                 results_test, intent_test = train((writer, file_path), lang, model, PAD_TOKEN, train_loader, val_loader,
                                                   test_loader, arg['lr'], arg['clip'])
@@ -97,7 +98,8 @@ def run_experiments(to_run):
 
                 print(f'Slot F1: {slot_f1s.mean():.3f} +- {slot_f1s.std():.3f}')
                 print(f'Intent Acc: {intent_acc.mean():.3f} +- {intent_acc.std():.3f}')
-                f.write(f'Slot F1: {slot_f1s.mean():.3f} +- {slot_f1s.std():.3f}\nIntent Acc: {intent_acc.mean():.3f} +- {intent_acc.std():.3f}\n')
+                f.write(
+                    f'Slot F1: {slot_f1s.mean():.3f} +- {slot_f1s.std():.3f}\nIntent Acc: {intent_acc.mean():.3f} +- {intent_acc.std():.3f}\n')
             else:
                 print(f"Slot F1: {results_test['total']['f']}")
                 print(f"Intent Accuracy: {intent_test['accuracy']}")

@@ -5,11 +5,9 @@
 from functions import *
 
 if __name__ == "__main__":
-    to_run = {'RNN': {'model': ModelIAS, 'optimizer': optim.SGD, 'run': True},
-              'LSTM': {'model': ModelIAS, 'optimizer': optim.SGD, 'run': True},
-              'LSTM_DROP': {'model': ModelIAS, 'optimizer': optim.SGD, 'emb_dropout': 0.1, 'out_dropout': 0.1,
-                            'run': True},
-              'LSTM_DROP_ADAMW': {'model': ModelIAS, 'optimizer': optim.AdamW, 'lr': 0.001, 'emb_dropout': 0.1,
-                                  'out_dropout': 0.1, 'run': True}}
+    to_run = {'Dropout': {'lr': 0.0001, 'dropout': 0.1, 'run': True},
+              'NoDropout': {'lr': 0.0001, 'dropout': 0, 'run': True},
+              'Bidirectional': {'lr': 0.0001, 'bidirectional': True, 'run': True},
+              'Bidirectional_dropout': {'lr': 0.0001, 'bidirectional': True, 'dropout': 0.1, 'run': True}, },
 
-    train_init(to_run)
+    run_experiments(to_run)

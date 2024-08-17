@@ -2,6 +2,8 @@ import copy
 
 import numpy as np
 import torch.optim as optim
+from datetime import datetime
+from torch.utils.tensorboard import SummaryWriter
 from sklearn.metrics import classification_report
 from torch.utils.data import DataLoader
 from tqdm import tqdm
@@ -32,11 +34,11 @@ def init_weights(mat):
                     m.bias.data.fill_(0.01)
 
 
-def train_init():
+def run_experiments(to_run):
+    save_path = "./"
     tmp_train_raw = load_data(os.path.join('dataset', 'ATIS', 'train.json'))
     test_raw = load_data(os.path.join('dataset', 'ATIS', 'test.json'))
     train_raw, val_raw, y_train, y_val, y_test = divide_training_set(tmp_train_raw, test_raw)
-    save_path = "./"
 
     words = sum([x['utterance'].split() for x in train_raw], [])  # No set() since we want to compute
     # the cutoff
@@ -54,32 +56,87 @@ def train_init():
     val_loader = DataLoader(val_dataset, batch_size=64, collate_fn=collate_fn)
     test_loader = DataLoader(test_dataset, batch_size=64, collate_fn=collate_fn)
 
-    hid_size = 200
-    emb_size = 300
+    default_options = {
+        'hid_size': 200,
+        'emb_size': 300,
+        'lr': 0.0001,
+        'clip': 5,
+        'emb_dropout': 0,
+        'out_dropout': 0,
+    }
 
-    lr = 0.0001  # learning rate
-    clip = 5  # Clip the gradient
+    for experiment in to_run:
+        arg = default_options | to_run[experiment]
+        if to_run[experiment]['run']:
+            out_slot = len(lang.slot2id)
+            out_int = len(lang.intent2id)
+            vocab_len = len(lang.word2id)
+            d = datetime.now()
+            strftime = d.strftime("%Y-%m-%d_%H-%M")
+            writer = SummaryWriter(log_dir=f"{save_path}runs/{experiment}/{strftime}/")
+            runpath = save_path + 'runs/' + experiment + '/' + strftime + '/'
+            os.makedirs(runpath, exist_ok=True)
+            file_path = runpath + experiment + '.pt'
 
-    out_slot = len(lang.slot2id)
-    out_int = len(lang.intent2id)
-    vocab_len = len(lang.word2id)
+            slot_f1s, intent_acc = [], []
+            results_test, intent_test = [], []
+            for _ in range(to_run[experiment]['runs']):
+                model = ModelIAS(arg['emb_size'], out_slot, out_int, arg['hid_size'], vocab_len,
+                                 pad_index=PAD_TOKEN).to(DEVICE)
+                model.apply(init_weights)
+                results_test, intent_test = train((writer, file_path), lang, model, PAD_TOKEN, train_loader, val_loader,
+                                                  test_loader, arg['lr'], arg['clip'])
+                intent_acc.append(intent_test['accuracy'])
+                slot_f1s.append(results_test['total']['f'])
 
-    model = ModelIAS(hid_size, out_slot, out_int, emb_size, vocab_len, pad_index=PAD_TOKEN).to(device)
-    model.apply(init_weights)
+            f = open(runpath + 'results.txt', "a")
 
+            if to_run[experiment]['runs'] > 1:
+                slot_f1s = np.asarray(slot_f1s)
+                intent_acc = np.asarray(intent_acc)
+
+                print(f'Slot F1: {slot_f1s.mean():.3f} +- {slot_f1s.std():.3f}')
+                print(f'Intent Acc: {intent_acc.mean():.3f} +- {intent_acc.std():.3f}')
+                f.write(f'Slot F1: {slot_f1s.mean():.3f} +- {slot_f1s.std():.3f}\nIntent Acc: {intent_acc.mean():.3f} +- {intent_acc.std():.3f}\n')
+            else:
+                print(f"Slot F1: {results_test['total']['f']}")
+                print(f"Intent Accuracy: {intent_test['accuracy']}")
+                f.write(f"Slot F1: {results_test['total']['f']}\nIntent Accuracy: {intent_test['accuracy']}\n")
+            f.close()
+        else:
+            # model = ModelIAS(arg['emb_size'], arg['hid_size'], vocab_len, pad_index=lang.word2id["<pad>"],
+            #                  out_dropout=arg['out_dropout'], emb_dropout=arg['emb_dropout']).to(DEVICE)
+            # model.load_state_dict(torch.load('./bin/' + experiment + '.pt'))
+            # optimizer = arg['optimizer'](model.parameters(), lr=arg['lr'])
+            # eval_criterion = nn.CrossEntropyLoss(ignore_index=lang.word2id["<pad>"], reduction='sum')
+            # test_ppl, _ = eval_loop(test_loader, eval_criterion, model, optimizer)
+            # print(f'Test ppl: {test_ppl:.2f}')
+            pass
+
+
+def log_values(writer, step, loss, prefix, f1_score=None):
+    writer.add_scalar(f"{prefix}/loss", loss, step)
+    if f1_score is not None:
+        writer.add_scalar(f"{prefix}/f1_score", f1_score, step)
+
+
+def train(logging, lang, model, PAD_TOKEN, train_loader, val_loader, test_loader, lr, clip, epochs=200, patience=3):
     optimizer = optim.Adam(model.parameters(), lr=lr)
     criterion_slots = nn.CrossEntropyLoss(ignore_index=PAD_TOKEN)
     criterion_intents = nn.CrossEntropyLoss()  # Because we do not have the pad token
 
-    n_epochs = 200
-    patience = 3
     losses_train = []
     losses_val = []
     sampled_epochs = []
     best_f1 = 0
+    best_model = None
+    writer, file_path = logging
 
-    for x in tqdm(range(1, n_epochs)):
+    pbar = tqdm(range(1, epochs))
+
+    for x in pbar:
         loss = train_loop(train_loader, optimizer, criterion_slots, criterion_intents, model, clip=clip)
+        log_values(writer, x, np.asarray(loss).mean(), 'train')
         if x % 5 == 0:  # We check the performance every 5 epochs
             sampled_epochs.append(x)
             losses_train.append(np.asarray(loss).mean())
@@ -87,6 +144,7 @@ def train_init():
             losses_val.append(np.asarray(loss_val).mean())
 
             f1 = results_val['total']['f']
+            log_values(writer, x, np.asarray(loss_val).mean(), 'val', f1)
             # For decreasing the patience you can also use the average between slot f1 and intent accuracy
             if f1 > best_f1:
                 best_f1 = f1
@@ -97,9 +155,11 @@ def train_init():
             if patience <= 0:  # Early stopping with patience
                 break  # Not nice but it keeps the code clean
 
-    results_test, intent_test, _ = eval_loop(test_loader, criterion_slots, criterion_intents, model, lang)
-    print('Slot F1: ', results_test['total']['f'])
-    print('Intent Accuracy:', intent_test['accuracy'])
+    best_model.to(DEVICE)
+    torch.save(best_model.state_dict(), file_path)
+    writer.close()
+    results_test, intent_test, _ = eval_loop(test_loader, criterion_slots, criterion_intents, best_model, lang)
+    return results_test, intent_test
 
 
 def train_loop(data, optimizer, criterion_slots, criterion_intents, model, clip=5):
@@ -139,8 +199,7 @@ def eval_loop(data, criterion_slots, criterion_intents, model, lang):
             loss_array.append(loss.item())
             # Intent inference
             # Get the highest probable class
-            out_intents = [lang.id2intent[x]
-                           for x in torch.argmax(intents, dim=1).tolist()]
+            out_intents = [lang.id2intent[x] for x in torch.argmax(intents, dim=1).tolist()]
             gt_intents = [lang.id2intent[x] for x in sample['intents'].tolist()]
             ref_intents.extend(gt_intents)
             hyp_intents.extend(out_intents)
@@ -169,6 +228,5 @@ def eval_loop(data, criterion_slots, criterion_intents, model, lang):
         print(hyp_s.difference(ref_s))
         results = {"total": {"f": 0}}
 
-    report_intent = classification_report(ref_intents, hyp_intents,
-                                          zero_division=False, output_dict=True)
+    report_intent = classification_report(ref_intents, hyp_intents, zero_division=False, output_dict=True)
     return results, report_intent, loss_array

@@ -6,7 +6,7 @@ import torch.utils.data as data
 from collections import Counter
 from sklearn.model_selection import train_test_split
 
-device = 'cuda:0'  # cuda:0 means we are using the GPU with id 0, if you have multiple GPU
+DEVICE = 'cuda:0'  # cuda:0 means we are using the GPU with id 0, if you have multiple GPU
 os.environ['CUDA_LAUNCH_BLOCKING'] = "1"  # Used to report errors on CUDA side
 PAD_TOKEN = 0
 
@@ -161,10 +161,10 @@ def collate_fn(data):
     y_slots, y_lengths = merge(new_item["slots"])
     intent = torch.LongTensor(new_item["intent"])
 
-    src_utt = src_utt.to(device)  # We load the Tensor on our selected device
-    y_slots = y_slots.to(device)
-    intent = intent.to(device)
-    y_lengths = torch.LongTensor(y_lengths).to(device)
+    src_utt = src_utt.to(DEVICE)  # We load the Tensor on our selected device
+    y_slots = y_slots.to(DEVICE)
+    intent = intent.to(DEVICE)
+    y_lengths = torch.LongTensor(y_lengths).to(DEVICE)
 
     new_item["utterances"] = src_utt
     new_item["intents"] = intent

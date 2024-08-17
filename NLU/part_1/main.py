@@ -8,6 +8,6 @@ if __name__ == "__main__":
     to_run = {'Dropout': {'dropout': 0.1, 'run': True, 'n_runs': 5},
               'NoDropout': {'run': True},
               'Bidirectional': {'bidirectional': True, 'run': True, 'n_runs': 5},
-              'Bidirectional_dropout': {'bidirectional': True, 'dropout': 0.1, 'run': True, 'n_runs': 5}},
+              'Bidirectional_dropout': {'bidirectional': True, 'dropout': 0.1, 'run': True, 'n_runs': 5}, }
 
     run_experiments(to_run)

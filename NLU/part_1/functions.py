@@ -78,7 +78,8 @@ def run_experiments(to_run):
         writer = SummaryWriter(log_dir=f"{save_path}runs/{experiment}/{strftime}/")
         runpath = save_path + 'runs/' + experiment + '/' + strftime + '/'
         os.makedirs(runpath, exist_ok=True)
-        file_path = runpath + experiment + '.pt'
+        os.makedirs('./bin', exist_ok=True)
+        file_path = './bin/' + experiment + '.pt'
 
         slot_f1s, intent_acc = [], []
         results_test, intent_test = [], []

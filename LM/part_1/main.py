@@ -1,6 +1,7 @@
 # This file is used to run your functions and print the results
 # Please write your functions or classes in the functions.py
 import torch
+import torch.optim as optim
 # Import everything from functions.py file
 from functions import *
 

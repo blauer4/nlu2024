@@ -66,7 +66,6 @@ def run_experiments(to_run):
 
         out_slot = len(lang.slot2id)
         out_int = len(lang.intent2id)
-        vocab_len = len(lang.word2id)
 
         train_dataset = IntentsAndSlots(train_raw, lang)
         val_dataset = IntentsAndSlots(val_raw, lang)

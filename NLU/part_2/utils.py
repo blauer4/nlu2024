@@ -5,10 +5,20 @@ import torch
 import torch.utils.data as data
 from collections import Counter
 from sklearn.model_selection import train_test_split
+import transformers
+from transformers import BertTokenizer
 
-device = 'cuda:0'  # cuda:0 means we are using the GPU with id 0, if you have multiple GPU
+DEVICE = 'cuda:0' if torch.cuda.is_available() else 'cpu'
 os.environ['CUDA_LAUNCH_BLOCKING'] = "1"  # Used to report errors on CUDA side
-PAD_TOKEN = 0
+tokenizer = BertTokenizer.from_pretrained("bert-base-uncased")
+PAD_TOKEN = tokenizer.pad_token
+PAD_ID = tokenizer.pad_token_id
+UNK_TOKEN = tokenizer.unk_token
+UNK_ID = tokenizer.unk_token_id
+SEP_TOKEN = tokenizer.sep_token
+SEP_ID = tokenizer.sep_token_id
+CLS_TOKEN = tokenizer.cls_token
+CLS_ID = tokenizer.cls_token_id
 
 
 def load_data(path):
@@ -69,9 +79,9 @@ class Lang():
         self.id2intent = {v: k for k, v in self.intent2id.items()}
 
     def w2id(self, elements, cutoff=None, unk=True):
-        vocab = {'pad': PAD_TOKEN}
+        vocab = {PAD_TOKEN: PAD_ID, CLS_TOKEN: CLS_ID, SEP_TOKEN: SEP_ID}
         if unk:
-            vocab['unk'] = len(vocab)
+            vocab[UNK_TOKEN] = UNK_ID
         count = Counter(elements)
         for k, v in count.items():
             if v > cutoff:
@@ -81,7 +91,7 @@ class Lang():
     def lab2id(self, elements, pad=True):
         vocab = {}
         if pad:
-            vocab['pad'] = PAD_TOKEN
+            vocab[PAD_TOKEN] = PAD_ID
         for elem in elements:
             vocab[elem] = len(vocab)
         return vocab
@@ -89,7 +99,7 @@ class Lang():
 
 class IntentsAndSlots(data.Dataset):
     # Mandatory methods are __init__, __len__ and __getitem__
-    def __init__(self, dataset, lang, unk='unk'):
+    def __init__(self, dataset, lang, unk=UNK_TOKEN):
         self.utterances = []
         self.intents = []
         self.slots = []
@@ -139,10 +149,9 @@ def collate_fn(data):
         '''
         lengths = [len(seq) for seq in sequences]
         max_len = 1 if max(lengths) == 0 else max(lengths)
-        # Pad token is zero in our case
-        # So we create a matrix full of PAD_TOKEN (i.e. 0) with the shape
+        # So we create a matrix full of PAD_ID with the shape
         # batch_size X maximum length of a sequence
-        padded_seqs = torch.LongTensor(len(sequences), max_len).fill_(PAD_TOKEN)
+        padded_seqs = torch.LongTensor(len(sequences), max_len).fill_(PAD_ID)
         for i, seq in enumerate(sequences):
             end = lengths[i]
             padded_seqs[i, :end] = seq  # We copy each sequence into the matrix
@@ -161,10 +170,10 @@ def collate_fn(data):
     y_slots, y_lengths = merge(new_item["slots"])
     intent = torch.LongTensor(new_item["intent"])
 
-    src_utt = src_utt.to(device)  # We load the Tensor on our selected device
-    y_slots = y_slots.to(device)
-    intent = intent.to(device)
-    y_lengths = torch.LongTensor(y_lengths).to(device)
+    src_utt = src_utt.to(DEVICE)  # We load the Tensor on our selected device
+    y_slots = y_slots.to(DEVICE)
+    intent = intent.to(DEVICE)
+    y_lengths = torch.LongTensor(y_lengths).to(DEVICE)
 
     new_item["utterances"] = src_utt
     new_item["intents"] = intent

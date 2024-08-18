@@ -47,13 +47,12 @@ def run_experiments(to_run):
     intents = set([line['intent'] for line in corpus])
 
     default_options = {
-        'hid_size': 200,
-        'emb_size': 300,
         'lr': 0.0001,
         'clip': 5,
         'dropout': 0,
         'bidirectional': False,
-        'n_runs': 1,
+        'epochs': 100,
+        'patience': 5,
         'run': False,
     }
 
@@ -93,7 +92,7 @@ def run_experiments(to_run):
             writer = SummaryWriter(log_dir=f"{save_path}runs/{experiment}/{strftime}/")
             model.apply(init_weights)
             results_test, intent_test = train((writer, file_path), lang, model, PAD_ID, train_loader, val_loader,
-                                              test_loader, arg['lr'], arg['clip'])
+                                              test_loader, arg['lr'], arg['clip'], arg['epochs'], arg['patience'])
         else:
             saved_model = torch.load(file_path)
             model.load_state_dict(saved_model['model'])
@@ -132,7 +131,7 @@ def log_values(writer, step, loss, prefix, f1_score=None):
         writer.add_scalar(f"{prefix}/f1_score", f1_score, step)
 
 
-def train(logging, lang, model, PAD_ID, train_loader, val_loader, test_loader, lr, clip, epochs=200, patience=3):
+def train(logging, lang, model, PAD_ID, train_loader, val_loader, test_loader, lr, clip, epochs=10, patience=3):
     optimizer = optim.Adam(model.parameters(), lr=lr, eps=1e-8)
     criterion_slots = nn.CrossEntropyLoss(ignore_index=PAD_ID)
     criterion_intents = nn.CrossEntropyLoss()  # Because we do not have the pad token
@@ -183,7 +182,8 @@ def train_loop(data, optimizer, criterion_slots, criterion_intents, model, clip=
     loss_array = []
     for sample in data:
         optimizer.zero_grad()  # Zeroing the gradient
-        slots, intent = model(sample['utterances'], sample['slots_len'])
+        slots, intent = model(sample["utterances"], sample["attention_masks"])
+        slots = slots[:, :, 1:-1]  # Removing the CLS and SEP tokens
         loss_intent = criterion_intents(intent, sample['intents'])
         loss_slot = criterion_slots(slots, sample['y_slots'])
         loss = loss_intent + loss_slot  # In joint training we sum the losses.
@@ -208,7 +208,8 @@ def eval_loop(data, criterion_slots, criterion_intents, model, lang):
     # softmax = nn.Softmax(dim=1) # Use Softmax if you need the actual probability
     with torch.no_grad():  # It used to avoid the creation of computational graph
         for sample in data:
-            slots, intents = model(sample['utterances'], sample['slots_len'])
+            slots, intents = model(sample["utterances"], sample["attention_masks"])
+            slots = slots[:, :, 1:-1]  # Removing the CLS and SEP tokens
             loss_intent = criterion_intents(intents, sample['intents'])
             loss_slot = criterion_slots(slots, sample['y_slots'])
             loss = loss_intent + loss_slot
@@ -224,7 +225,7 @@ def eval_loop(data, criterion_slots, criterion_intents, model, lang):
             output_slots = torch.argmax(slots, dim=1)
             for id_seq, seq in enumerate(output_slots):
                 length = sample['slots_len'].tolist()[id_seq]
-                utt_ids = sample['utterance'][id_seq][:length].tolist()
+                utt_ids = sample["utterance"][id_seq][1 : length + 1].tolist()
                 gt_ids = sample['y_slots'][id_seq].tolist()
                 gt_slots = [lang.id2slot[elem] for elem in gt_ids[:length]]
                 utterance = [lang.id2word[elem] for elem in utt_ids]

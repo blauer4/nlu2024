@@ -171,6 +171,7 @@ def collate_fn(data):
     y_slots, y_lengths, _ = merge(new_item["slots"])
     intent = torch.LongTensor(new_item["intent"])
 
+    attention_masks = attention_masks.to(DEVICE)
     src_utt = src_utt.to(DEVICE)  # We load the Tensor on our selected device
     y_slots = y_slots.to(DEVICE)
     intent = intent.to(DEVICE)

@@ -6,7 +6,7 @@ from functions import *
 
 if __name__ == "__main__":
     to_run = {'Dropout': {'dropout': 0.1, 'run': True, 'n_runs': 5},
-              'NoDropout': {'run': True},
+              'Baseline': {'run': True, 'n_runs': 5},
               'Bidirectional': {'bidirectional': True, 'run': True, 'n_runs': 5},
               'Bidirectional_dropout': {'bidirectional': True, 'dropout': 0.1, 'run': True, 'n_runs': 5}, }
 

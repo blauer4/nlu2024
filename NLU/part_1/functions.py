@@ -163,7 +163,8 @@ def train(logging, lang, model, PAD_TOKEN, train_loader, val_loader, test_loader
                 break  # Not nice but it keeps the code clean
 
     best_model.to(DEVICE)
-    torch.save(best_model.state_dict(), file_path)
+    if not os.path.isfile(file_path):
+        torch.save(best_model.state_dict(), file_path)
     writer.close()
     results_test, intent_test, _ = eval_loop(test_loader, criterion_slots, criterion_intents, best_model, lang)
     return results_test, intent_test

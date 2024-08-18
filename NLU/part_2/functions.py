@@ -58,6 +58,8 @@ def run_experiments(to_run):
 
     for experiment in to_run:
         arg = default_options | to_run[experiment]
+        print(f"Running experiment {experiment}")
+
         if arg['run']:
             lang = Lang(words, intents, slots, cutoff=0)
         else:

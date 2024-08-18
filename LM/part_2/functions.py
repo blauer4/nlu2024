@@ -77,6 +77,7 @@ def run_experiments(to_run):
 
     for experiment in to_run:
         arg = default_options | to_run[experiment]
+        print(f"Running experiment {experiment}")
         if to_run[experiment]:
             model = LM_LSTM(arg['emb_size'], arg['hid_size'], vocab_len, pad_index=lang.word2id["<pad>"],
                             out_dropout=arg['out_dropout'], emb_dropout=arg['emb_dropout'],

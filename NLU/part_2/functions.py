@@ -84,7 +84,6 @@ def run_experiments(to_run):
         file_path = './bin/' + experiment + '.pt'
 
         slot_f1s, intent_acc = [], []
-        results_test, intent_test = [], []
 
         model = BertNLU(out_slot, out_int, dropout=arg['dropout'], model_name=BERT_MODEL).to(DEVICE)
         if to_run[experiment]['run']:

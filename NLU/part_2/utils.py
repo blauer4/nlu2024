@@ -118,7 +118,7 @@ class IntentsAndSlots(data.Dataset):
         return len(self.utterances)
 
     def __getitem__(self, idx):
-        utt = torch.Tensor(self.utt_ids[idx])
+        utt = torch.Tensor(tokenizer.build_inputs_with_special_tokens(self.utt_ids[idx]))
         slots = torch.Tensor(self.slot_ids[idx])
         intent = self.intent_ids[idx]
         sample = {'utterance': utt, 'slots': slots, 'intent': intent}

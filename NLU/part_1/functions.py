@@ -46,16 +46,6 @@ def run_experiments(to_run):
     slots = set(sum([line['slots'].split() for line in corpus], []))
     intents = set([line['intent'] for line in corpus])
 
-    lang = Lang(words, intents, slots, cutoff=0)
-
-    train_dataset = IntentsAndSlots(train_raw, lang)
-    val_dataset = IntentsAndSlots(val_raw, lang)
-    test_dataset = IntentsAndSlots(test_raw, lang)
-    # Dataloader instantiations
-    train_loader = DataLoader(train_dataset, batch_size=128, collate_fn=collate_fn, shuffle=True)
-    val_loader = DataLoader(val_dataset, batch_size=64, collate_fn=collate_fn)
-    test_loader = DataLoader(test_dataset, batch_size=64, collate_fn=collate_fn)
-
     default_options = {
         'hid_size': 200,
         'emb_size': 300,
@@ -64,18 +54,32 @@ def run_experiments(to_run):
         'dropout': 0,
         'bidirectional': False,
         'n_runs': 1,
+        'run': False,
     }
 
     for experiment in to_run:
         arg = default_options | to_run[experiment]
+        if arg['run']:
+            lang = Lang(words, intents, slots, cutoff=0)
+        else:
+            saved_model = torch.load('./bin/' + experiment + '.pt')
+            lang = saved_model['lang']
 
         out_slot = len(lang.slot2id)
         out_int = len(lang.intent2id)
         vocab_len = len(lang.word2id)
 
+        train_dataset = IntentsAndSlots(train_raw, lang)
+        val_dataset = IntentsAndSlots(val_raw, lang)
+        test_dataset = IntentsAndSlots(test_raw, lang)
+
+        # Dataloader instantiations
+        train_loader = DataLoader(train_dataset, batch_size=128, collate_fn=collate_fn, shuffle=True)
+        val_loader = DataLoader(val_dataset, batch_size=64, collate_fn=collate_fn)
+        test_loader = DataLoader(test_dataset, batch_size=64, collate_fn=collate_fn)
+
         d = datetime.now()
         strftime = d.strftime("%Y-%m-%d_%H-%M")
-        writer = SummaryWriter(log_dir=f"{save_path}runs/{experiment}/{strftime}/")
         runpath = save_path + 'runs/' + experiment + '/' + strftime + '/'
         os.makedirs(runpath, exist_ok=True)
         os.makedirs('./bin', exist_ok=True)
@@ -87,11 +91,14 @@ def run_experiments(to_run):
             model = ModelIAS(arg['emb_size'], out_slot, out_int, arg['hid_size'], vocab_len, pad_index=PAD_TOKEN,
                              bidirectional=arg['bidirectional'], dropout=arg['dropout']).to(DEVICE)
             if to_run[experiment]['run']:
+                writer = SummaryWriter(log_dir=f"{save_path}runs/{experiment}/{strftime}/")
                 model.apply(init_weights)
                 results_test, intent_test = train((writer, file_path), lang, model, PAD_TOKEN, train_loader, val_loader,
                                                   test_loader, arg['lr'], arg['clip'])
             else:
-                model.load_state_dict(torch.load('./bin/' + experiment + '.pt'))
+                saved_model = torch.load(file_path)
+
+                model.load_state_dict(saved_model['model'])
                 criterion_slots = nn.CrossEntropyLoss(ignore_index=PAD_TOKEN)
                 criterion_intents = nn.CrossEntropyLoss()
                 results_test, intent_test, _ = eval_loop(test_loader, criterion_slots, criterion_intents, model, lang)
@@ -164,7 +171,11 @@ def train(logging, lang, model, PAD_TOKEN, train_loader, val_loader, test_loader
 
     best_model.to(DEVICE)
     if not os.path.isfile(file_path):
-        torch.save(best_model.state_dict(), file_path)
+        to_save = {
+            "model": best_model.state_dict(),
+            "lang": lang,
+        }
+        torch.save(to_save, file_path)
     writer.close()
     results_test, intent_test, _ = eval_loop(test_loader, criterion_slots, criterion_intents, best_model, lang)
     return results_test, intent_test

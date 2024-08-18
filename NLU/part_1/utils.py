@@ -6,8 +6,8 @@ import torch.utils.data as data
 from collections import Counter
 from sklearn.model_selection import train_test_split
 
-DEVICE = 'cuda:0'  # cuda:0 means we are using the GPU with id 0, if you have multiple GPU
-os.environ['CUDA_LAUNCH_BLOCKING'] = "1"  # Used to report errors on CUDA side
+DEVICE = 'cuda:0' if torch.cuda.is_available() else 'cpu'
+os.environ['CUDA_LAUNCH_BLOCKING'] = "1"
 PAD_TOKEN = 0
 
 

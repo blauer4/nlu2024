@@ -131,7 +131,7 @@ def log_values(writer, step, loss, prefix, f1_score=None):
         writer.add_scalar(f"{prefix}/f1_score", f1_score, step)
 
 
-def train(logging, lang, model, PAD_ID, train_loader, val_loader, test_loader, lr, clip, epochs=10, patience=3):
+def train(logging, lang, model, PAD_ID, train_loader, val_loader, test_loader, lr, clip, epochs=10, pat=3):
     optimizer = optim.Adam(model.parameters(), lr=lr, eps=1e-8)
     criterion_slots = nn.CrossEntropyLoss(ignore_index=PAD_ID)
     criterion_intents = nn.CrossEntropyLoss()  # Because we do not have the pad token
@@ -142,6 +142,7 @@ def train(logging, lang, model, PAD_ID, train_loader, val_loader, test_loader, l
     best_f1 = 0
     best_model = None
     writer, file_path = logging
+    patience = pat
 
     pbar = tqdm(range(1, epochs))
 
@@ -160,6 +161,7 @@ def train(logging, lang, model, PAD_ID, train_loader, val_loader, test_loader, l
         if f1 > best_f1:
             best_f1 = f1
             best_model = copy.deepcopy(model).to('cpu')
+            patience = pat
         else:
             patience -= 1
         if patience <= 0:  # Early stopping with patience
@@ -219,12 +221,16 @@ def eval_loop(data, criterion_slots, criterion_intents, model, lang):
             gt_intents = [lang.id2intent[x] for x in sample['intents'].tolist()]
             ref_intents.extend(gt_intents)
             hyp_intents.extend(out_intents)
+            print("\n\n\n\n")
+            print(f"hyp_intents are: {hyp_intents}")
+            print("\n\n\n\n")
+            print(f"ref_intents are: {ref_intents}")
 
             # Slot inference
             output_slots = torch.argmax(slots, dim=1)
             for id_seq, seq in enumerate(output_slots):
                 length = sample['slots_len'].tolist()[id_seq]
-                utt_ids = sample["utterance"][id_seq][1 : length + 1].tolist()
+                utt_ids = sample["utterance"][id_seq][1: length + 1].tolist()
                 gt_ids = sample['y_slots'][id_seq].tolist()
                 gt_slots = [lang.id2slot[elem] for elem in gt_ids[:length]]
                 utterance = [lang.id2word[elem] for elem in utt_ids]
@@ -234,6 +240,7 @@ def eval_loop(data, criterion_slots, criterion_intents, model, lang):
                 for id_el, elem in enumerate(to_decode):
                     tmp_seq.append((utterance[id_el], lang.id2slot[elem]))
                 hyp_slots.append(tmp_seq)
+            print(f"hyp_slots are: {hyp_slots}")
     try:
         results = evaluate(ref_slots, hyp_slots)
     except Exception as ex:

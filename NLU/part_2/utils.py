@@ -8,9 +8,10 @@ from sklearn.model_selection import train_test_split
 import transformers
 from transformers import BertTokenizer
 
+BERT_MODEL = "bert-base-uncased"
 DEVICE = 'cuda:0' if torch.cuda.is_available() else 'cpu'
 os.environ['CUDA_LAUNCH_BLOCKING'] = "1"  # Used to report errors on CUDA side
-tokenizer = BertTokenizer.from_pretrained("bert-base-uncased")
+tokenizer = BertTokenizer.from_pretrained(BERT_MODEL)
 PAD_TOKEN = tokenizer.pad_token
 PAD_ID = tokenizer.pad_token_id
 UNK_TOKEN = tokenizer.unk_token
@@ -82,17 +83,19 @@ class Lang():
         vocab = {PAD_TOKEN: PAD_ID, CLS_TOKEN: CLS_ID, SEP_TOKEN: SEP_ID}
         if unk:
             vocab[UNK_TOKEN] = UNK_ID
+        for word in elements:
+            vocab[word] = tokenizer.convert_tokens_to_ids(word)
         count = Counter(elements)
-        for k, v in count.items():
+        for k, v in sorted(count.items()):
             if v > cutoff:
-                vocab[k] = len(vocab)
+                vocab[k] = tokenizer.convert_tokens_to_ids(k)
         return vocab
 
     def lab2id(self, elements, pad=True):
         vocab = {}
         if pad:
             vocab[PAD_TOKEN] = PAD_ID
-        for elem in elements:
+        for elem in sorted(set(elements)):
             vocab[elem] = len(vocab)
         return vocab
 

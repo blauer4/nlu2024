@@ -4,14 +4,12 @@ from transformers import BertModel, BertConfig
 import torch.nn as nn
 from torch.nn.utils.rnn import pack_padded_sequence, pad_packed_sequence
 
-BERT_MODEL = "bert-base-uncased"
-
 
 class BertNLU(nn.Module):
-    def __init__(self, out_slot, out_int, dropout=0.1, model_name=BERT_MODEL):
+    def __init__(self, out_slot, out_int, dropout=0.1, model_name="bert-base-uncased"):
         super().__init__()
         config = BertConfig.from_pretrained(model_name)
-        self.bert = BertModel.from_pretrained('bert-base-uncased', config=config)
+        self.bert = BertModel.from_pretrained(model_name, config=config)
         self.dropout = nn.Dropout(dropout)
         self.intent_out = nn.Linear(config.hidden_size, out_int)
         self.slot_out = nn.Linear(config.hidden_size, out_slot)

@@ -100,35 +100,24 @@ def run_experiments(to_run):
             criterion_intents = nn.CrossEntropyLoss()
             results_test, intent_test, _ = eval_loop(test_loader, criterion_slots, criterion_intents, model, lang)
 
-            intent_acc.append(intent_test['accuracy'])
-            slot_f1s.append(results_test['total']['f'])
-
         if to_run[experiment]['run']:
             f = open(runpath + 'results.txt', "a")
 
-        if arg['n_runs'] > 1:
-            slot_f1s = np.asarray(slot_f1s)
-            intent_acc = np.asarray(intent_acc)
-
-            print(f'Slot F1: {slot_f1s.mean():.3f} +- {slot_f1s.std():.3f}')
-            print(f'Intent Acc: {intent_acc.mean():.3f} +- {intent_acc.std():.3f}')
-            if to_run[experiment]['run']:
-                f.write(f'Slot F1: {slot_f1s.mean():.3f} +- {slot_f1s.std():.3f}\nIntent Acc: {intent_acc.mean():.3f} '
-                        f'+- {intent_acc.std():.3f}\n')
-        else:
-            print(f"Slot F1: {results_test['total']['f']}")
-            print(f"Intent Accuracy: {intent_test['accuracy']}")
-            if to_run[experiment]['run']:
-                f.write(f"Slot F1: {results_test['total']['f']}\nIntent Accuracy: {intent_test['accuracy']}\n")
+        print(f"Slot F1: {results_test['total']['f']}")
+        print(f"Intent Accuracy: {intent_test['accuracy']}")
+        if to_run[experiment]['run']:
+            f.write(f"Slot F1: {results_test['total']['f']}\nIntent Accuracy: {intent_test['accuracy']}\n")
 
         if to_run[experiment]['run']:
             f.close()
 
 
-def log_values(writer, step, loss, prefix, f1_score=None):
+def log_values(writer, step, loss, prefix, f1_score=None, intent_acc=None):
     writer.add_scalar(f"{prefix}/loss", loss, step)
     if f1_score is not None:
         writer.add_scalar(f"{prefix}/f1_score", f1_score, step)
+    if intent_acc is not None:
+        writer.add_scalar(f"{prefix}/intent_acc", intent_acc, step)
 
 
 def train(logging, lang, model, PAD_ID, train_loader, val_loader, test_loader, lr, clip, epochs=10, pat=3):
@@ -156,7 +145,7 @@ def train(logging, lang, model, PAD_ID, train_loader, val_loader, test_loader, l
         losses_val.append(np.asarray(loss_val).mean())
 
         f1 = results_val['total']['f']
-        log_values(writer, x, np.asarray(loss_val).mean(), 'val', f1)
+        log_values(writer, x, np.asarray(loss_val).mean(), 'val', f1, intent_res['accuracy'])
         # For decreasing the patience you can also use the average between slot f1 and intent accuracy
         if f1 > best_f1:
             best_f1 = f1

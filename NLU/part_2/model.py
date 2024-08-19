@@ -9,13 +9,13 @@ class BertNLU(nn.Module):
     def __init__(self, out_slot, out_int, dropout=0.1, model_name="bert-base-uncased"):
         super().__init__()
         config = BertConfig.from_pretrained(model_name)
-        self.bert = BertModel.from_pretrained(model_name, config=config)
+        self.bert = BertModel.from_pretrained(model_name)
         self.dropout = nn.Dropout(dropout)
         self.intent_out = nn.Linear(config.hidden_size, out_int)
         self.slot_out = nn.Linear(config.hidden_size, out_slot)
 
-    def forward(self, input_ids, attention_mask):
-        outputs = self.bert(input_ids, attention_mask=attention_mask)
+    def forward(self, input_ids, attention_masks):
+        outputs = self.bert(input_ids, attention_mask=attention_masks)
 
         sequence_output = outputs[0]
         pooled_output = outputs[1]

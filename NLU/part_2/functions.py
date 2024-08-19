@@ -148,23 +148,22 @@ def train(logging, lang, model, PAD_ID, train_loader, val_loader, test_loader, l
     for x in pbar:
         loss = train_loop(train_loader, optimizer, criterion_slots, criterion_intents, model, clip=clip)
         log_values(writer, x, np.asarray(loss).mean(), 'train')
-        if x % 5 == 0:  # We check the performance every 5 epochs
-            sampled_epochs.append(x)
-            losses_train.append(np.asarray(loss).mean())
-            results_val, intent_res, loss_val = eval_loop(val_loader, criterion_slots, criterion_intents, model, lang)
-            losses_val.append(np.asarray(loss_val).mean())
 
-            f1 = results_val['total']['f']
-            log_values(writer, x, np.asarray(loss_val).mean(), 'val', f1)
-            # For decreasing the patience you can also use the average between slot f1 and intent accuracy
-            if f1 > best_f1:
-                best_f1 = f1
-                best_model = copy.deepcopy(model).to('cpu')
-                patience = 5
-            else:
-                patience -= 1
-            if patience <= 0:  # Early stopping with patience
-                break  # Not nice but it keeps the code clean
+        sampled_epochs.append(x)
+        losses_train.append(np.asarray(loss).mean())
+        results_val, intent_res, loss_val = eval_loop(val_loader, criterion_slots, criterion_intents, model, lang)
+        losses_val.append(np.asarray(loss_val).mean())
+
+        f1 = results_val['total']['f']
+        log_values(writer, x, np.asarray(loss_val).mean(), 'val', f1)
+        # For decreasing the patience you can also use the average between slot f1 and intent accuracy
+        if f1 > best_f1:
+            best_f1 = f1
+            best_model = copy.deepcopy(model).to('cpu')
+        else:
+            patience -= 1
+        if patience <= 0:  # Early stopping with patience
+            break  # Not nice but it keeps the code clean
 
     best_model.to(DEVICE)
     to_save = {

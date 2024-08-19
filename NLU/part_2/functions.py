@@ -51,8 +51,8 @@ def run_experiments(to_run):
         'clip': 5,
         'dropout': 0,
         'bidirectional': False,
-        'epochs': 100,
-        'patience': 5,
+        'epochs': 30,
+        'patience': 10,
         'run': False,
     }
 
@@ -160,7 +160,7 @@ def train(logging, lang, model, PAD_ID, train_loader, val_loader, test_loader, l
             if f1 > best_f1:
                 best_f1 = f1
                 best_model = copy.deepcopy(model).to('cpu')
-                patience = 3
+                patience = 5
             else:
                 patience -= 1
             if patience <= 0:  # Early stopping with patience

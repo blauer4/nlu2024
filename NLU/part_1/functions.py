@@ -63,7 +63,7 @@ def run_experiments(to_run):
         if arg['run']:
             lang = Lang(words, intents, slots, cutoff=0)
         else:
-            saved_model = torch.load('./bin/' + experiment + '.pt')
+            saved_model = torch.load('./bin/' + experiment + '.pt', map_location=torch.device('cpu'))
             lang = saved_model['lang']
 
         out_slot = len(lang.slot2id)
@@ -97,8 +97,6 @@ def run_experiments(to_run):
                 results_test, intent_test = train((writer, file_path), lang, model, PAD_TOKEN, train_loader, val_loader,
                                                   test_loader, arg['lr'], arg['clip'])
             else:
-                saved_model = torch.load(file_path)
-
                 model.load_state_dict(saved_model['model'])
                 criterion_slots = nn.CrossEntropyLoss(ignore_index=PAD_TOKEN)
                 criterion_intents = nn.CrossEntropyLoss()

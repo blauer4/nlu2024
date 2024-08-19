@@ -221,10 +221,6 @@ def eval_loop(data, criterion_slots, criterion_intents, model, lang):
             gt_intents = [lang.id2intent[x] for x in sample['intents'].tolist()]
             ref_intents.extend(gt_intents)
             hyp_intents.extend(out_intents)
-            print("\n\n\n\n")
-            print(f"hyp_intents are: {hyp_intents}")
-            print("\n\n\n\n")
-            print(f"ref_intents are: {ref_intents}")
 
             # Slot inference
             output_slots = torch.argmax(slots, dim=1)
@@ -240,7 +236,6 @@ def eval_loop(data, criterion_slots, criterion_intents, model, lang):
                 for id_el, elem in enumerate(to_decode):
                     tmp_seq.append((utterance[id_el], lang.id2slot[elem]))
                 hyp_slots.append(tmp_seq)
-            print(f"hyp_slots are: {hyp_slots}")
     try:
         results = evaluate(ref_slots, hyp_slots)
     except Exception as ex:

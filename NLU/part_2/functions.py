@@ -13,27 +13,6 @@ from model import *
 from utils import *
 
 
-def init_weights(mat):
-    for m in mat.modules():
-        if type(m) in [nn.GRU, nn.LSTM, nn.RNN]:
-            for name, param in m.named_parameters():
-                if 'weight_ih' in name:
-                    for idx in range(4):
-                        mul = param.shape[0] // 4
-                        torch.nn.init.xavier_uniform_(param[idx * mul:(idx + 1) * mul])
-                elif 'weight_hh' in name:
-                    for idx in range(4):
-                        mul = param.shape[0] // 4
-                        torch.nn.init.orthogonal_(param[idx * mul:(idx + 1) * mul])
-                elif 'bias' in name:
-                    param.data.fill_(0)
-        else:
-            if type(m) in [nn.Linear]:
-                torch.nn.init.uniform_(m.weight, -0.01, 0.01)
-                if m.bias != None:
-                    m.bias.data.fill_(0.01)
-
-
 def run_experiments(to_run):
     save_path = "./"
     tmp_train_raw = load_data(os.path.join('dataset', 'ATIS', 'train.json'))
@@ -50,7 +29,6 @@ def run_experiments(to_run):
         'lr': 0.0001,
         'clip': 5,
         'dropout': 0,
-        'bidirectional': False,
         'epochs': 30,
         'patience': 10,
         'run': False,
@@ -63,15 +41,18 @@ def run_experiments(to_run):
         if arg['run']:
             lang = Lang(words, intents, slots, cutoff=0)
         else:
-            saved_model = torch.load('./bin/' + experiment + '.pt')
+            saved_model = torch.load('./bin/' + experiment + '.pt', map_location=torch.device(DEVICE))
             lang = saved_model['lang']
 
         out_slot = len(lang.slot2id)
         out_int = len(lang.intent2id)
 
-        train_dataset = IntentsAndSlots(train_raw, lang)
-        val_dataset = IntentsAndSlots(val_raw, lang)
-        test_dataset = IntentsAndSlots(test_raw, lang)
+        # train_dataset = IntentsAndSlots(train_raw, lang)
+        train_dataset = BERTIntentSlotDataset(train_raw, lang.intent2id, lang.slot2id)
+        # val_dataset = IntentsAndSlots(val_raw, lang)
+        val_dataset = BERTIntentSlotDataset(val_raw, lang.intent2id, lang.slot2id)
+        # test_dataset = IntentsAndSlots(test_raw, lang)
+        test_dataset = BERTIntentSlotDataset(test_raw, lang.intent2id, lang.slot2id)
 
         # Dataloader instantiations
         train_loader = DataLoader(train_dataset, batch_size=128, collate_fn=collate_fn, shuffle=True)
@@ -85,28 +66,25 @@ def run_experiments(to_run):
         os.makedirs('./bin', exist_ok=True)
         file_path = './bin/' + experiment + '.pt'
 
-        slot_f1s, intent_acc = [], []
-
         model = BertNLU(out_slot, out_int, dropout=arg['dropout'], model_name=BERT_MODEL).to(DEVICE)
         if to_run[experiment]['run']:
             writer = SummaryWriter(log_dir=f"{save_path}runs/{experiment}/{strftime}/")
-            model.apply(init_weights)
             results_test, intent_test = train((writer, file_path), lang, model, PAD_ID, train_loader, val_loader,
                                               test_loader, arg['lr'], arg['clip'], arg['epochs'], arg['patience'])
         else:
-            saved_model = torch.load(file_path)
             model.load_state_dict(saved_model['model'])
             criterion_slots = nn.CrossEntropyLoss(ignore_index=PAD_ID)
             criterion_intents = nn.CrossEntropyLoss()
-            results_test, intent_test, _ = eval_loop(test_loader, criterion_slots, criterion_intents, model, lang)
+            results_test, intent_test, _ = eval_loop(test_loader, criterion_slots, criterion_intents, model,
+                                                     lang.id2intent, lang.id2slot)
 
         if to_run[experiment]['run']:
             f = open(runpath + 'results.txt', "a")
 
-        print(f"Slot F1: {results_test['total']['f']}")
-        print(f"Intent Accuracy: {intent_test['accuracy']}")
+        print(f"Slot F1: {results_test['total']['f']:.3f}")
+        print(f"Intent Accuracy: {intent_test['accuracy']:.3f}")
         if to_run[experiment]['run']:
-            f.write(f"Slot F1: {results_test['total']['f']}\nIntent Accuracy: {intent_test['accuracy']}\n")
+            f.write(f"Slot F1: {results_test['total']['f']:.3f}\nIntent Accuracy: {intent_test['accuracy']:.3f}\n")
 
         if to_run[experiment]['run']:
             f.close()
@@ -141,12 +119,14 @@ def train(logging, lang, model, PAD_ID, train_loader, val_loader, test_loader, l
 
         sampled_epochs.append(x)
         losses_train.append(np.asarray(loss).mean())
-        results_val, intent_res, loss_val = eval_loop(val_loader, criterion_slots, criterion_intents, model, lang)
+        results_val, intent_res, loss_val = eval_loop(val_loader, criterion_slots, criterion_intents, model,
+                                                      lang.id2intent, lang.id2slot)
         losses_val.append(np.asarray(loss_val).mean())
 
         f1 = results_val['total']['f']
         log_values(writer, x, np.asarray(loss_val).mean(), 'val', f1, intent_res['accuracy'])
         # For decreasing the patience you can also use the average between slot f1 and intent accuracy
+        print(f1, intent_res['accuracy'])
         if f1 > best_f1:
             best_f1 = f1
             best_model = copy.deepcopy(model).to('cpu')
@@ -163,30 +143,32 @@ def train(logging, lang, model, PAD_ID, train_loader, val_loader, test_loader, l
     }
     torch.save(to_save, file_path)
     writer.close()
-    results_test, intent_test, _ = eval_loop(test_loader, criterion_slots, criterion_intents, best_model, lang)
+    results_test, intent_test, _ = eval_loop(test_loader, criterion_slots, criterion_intents, best_model,
+                                             lang.id2intent, lang.id2slot)
     return results_test, intent_test
 
 
-def train_loop(data, optimizer, criterion_slots, criterion_intents, model, clip=5):
-    model.train()
+def train_loop(data_loader, optimizer, criterion_slots, criterion_intents, model, clip=5):
+    model.train()  # Set the model to training mode
     loss_array = []
-    for sample in data:
-        optimizer.zero_grad()  # Zeroing the gradient
-        slots, intent = model(sample["utterances"], sample["attention_masks"])
-        slots = slots[:, :, 1:-1]  # Removing the CLS and SEP tokens
-        loss_intent = criterion_intents(intent, sample['intents'])
-        loss_slot = criterion_slots(slots, sample['y_slots'])
-        loss = loss_intent + loss_slot  # In joint training we sum the losses.
-        # Is there another way to do that?
+
+    for sample in data_loader:
+        optimizer.zero_grad()
+        slots_logits, intents_logits = model(sample["input_ids"], sample["attention_mask"])
+
+        loss_intent = criterion_intents(intents_logits, sample['intent_labels'])
+        loss_slot = criterion_slots(slots_logits, sample['slot_labels'])
+        loss = loss_intent + loss_slot
         loss_array.append(loss.item())
-        loss.backward()  # Compute the gradient, deleting the computational graph
-        # clip the gradient to avoid exploding gradients
+
+        loss.backward()
         torch.nn.utils.clip_grad_norm_(model.parameters(), clip)
-        optimizer.step()  # Update the weights
+        optimizer.step()
+
     return loss_array
 
 
-def eval_loop(data, criterion_slots, criterion_intents, model, lang):
+def eval_loop(data_loader, criterion_slots, criterion_intents, model, intent_label_map, slot_label_map):
     model.eval()
     loss_array = []
 
@@ -195,36 +177,48 @@ def eval_loop(data, criterion_slots, criterion_intents, model, lang):
 
     ref_slots = []
     hyp_slots = []
-    # softmax = nn.Softmax(dim=1) # Use Softmax if you need the actual probability
-    with torch.no_grad():  # It used to avoid the creation of computational graph
-        for sample in data:
-            slots, intents = model(sample["utterances"], sample["attention_masks"])
-            slots = slots[:, :, 1:-1]  # Removing the CLS and SEP tokens
-            loss_intent = criterion_intents(intents, sample['intents'])
-            loss_slot = criterion_slots(slots, sample['y_slots'])
+
+    id2intent = intent_label_map
+    id2slot = slot_label_map
+
+    with torch.no_grad():  # Avoid the creation of computational graph
+        for sample in data_loader:
+            # Forward pass: Get model predictions
+            slots_logits, intents_logits = model(sample["input_ids"], sample["attention_mask"])
+
+            # Calculate losses
+            loss_intent = criterion_intents(intents_logits, sample['intent_labels'])
+            loss_slot = criterion_slots(slots_logits, sample['slot_labels'])
             loss = loss_intent + loss_slot
             loss_array.append(loss.item())
-            # Intent inference
-            # Get the highest probable class
-            out_intents = [lang.id2intent[x] for x in torch.argmax(intents, dim=1).tolist()]
-            gt_intents = [lang.id2intent[x] for x in sample['intents'].tolist()]
-            ref_intents.extend(gt_intents)
-            hyp_intents.extend(out_intents)
 
+            # Intent inference
+            predicted_intents = torch.argmax(intents_logits, dim=1).tolist()
+            gt_intents = sample['intent_labels'].tolist()
+            ref_intents.extend([id2intent[x] for x in gt_intents])
+            hyp_intents.extend([id2intent[x] for x in predicted_intents])
             # Slot inference
-            output_slots = torch.argmax(slots, dim=1)
+            output_slots = torch.argmax(slots_logits, dim=1)
             for id_seq, seq in enumerate(output_slots):
-                length = sample['slots_len'].tolist()[id_seq]
-                utt_ids = sample["utterance"][id_seq][1: length + 1].tolist()
-                gt_ids = sample['y_slots'][id_seq].tolist()
-                gt_slots = [lang.id2slot[elem] for elem in gt_ids[:length]]
-                utterance = [lang.id2word[elem] for elem in utt_ids]
-                to_decode = seq[:length].tolist()
+
+                pred_slot_ids = output_slots[id_seq].tolist()
+                remove_index = []
+                gt_slot_ids = sample['slot_labels'][id_seq].tolist()
+                for i_el, token in enumerate(gt_slot_ids):
+                    if token == PAD_ID:
+                        remove_index.append(i_el)
+                pred_slot_ids = [token for id_el, token in enumerate(pred_slot_ids) if id_el not in remove_index]
+                gt_slot_ids = [token for id_el, token in enumerate(gt_slot_ids) if id_el not in remove_index]
+
+                gt_slots = [id2slot[elem] for elem in gt_slot_ids]
+                pred_slots = [id2slot[elem] for elem in pred_slot_ids]
+
+                utterance = sample["sentence"][id_seq]
+
+                if len(utterance) != len(pred_slot_ids): breakpoint()
                 ref_slots.append([(utterance[id_el], elem) for id_el, elem in enumerate(gt_slots)])
-                tmp_seq = []
-                for id_el, elem in enumerate(to_decode):
-                    tmp_seq.append((utterance[id_el], lang.id2slot[elem]))
-                hyp_slots.append(tmp_seq)
+                hyp_slots.append([(utterance[id_el], elem) for id_el, elem in enumerate(pred_slots)])
+    # Calculate metrics
     try:
         results = evaluate(ref_slots, hyp_slots)
     except Exception as ex:
@@ -235,5 +229,7 @@ def eval_loop(data, criterion_slots, criterion_intents, model, lang):
         print(hyp_s.difference(ref_s))
         results = {"total": {"f": 0}}
 
+    # Generate classification report for intents
     report_intent = classification_report(ref_intents, hyp_intents, zero_division=False, output_dict=True)
+
     return results, report_intent, loss_array

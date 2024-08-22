@@ -63,7 +63,7 @@ def run_experiments(to_run):
         if arg['run']:
             lang = Lang(words, intents, slots, cutoff=0)
         else:
-            saved_model = torch.load('./bin/' + experiment + '.pt', map_location=torch.device('cpu'))
+            saved_model = torch.load('./bin/' + experiment + '.pt', map_location=torch.device(DEVICE))
             lang = saved_model['lang']
 
         out_slot = len(lang.slot2id)
@@ -88,6 +88,8 @@ def run_experiments(to_run):
 
         slot_f1s, intent_acc = [], []
         results_test, intent_test = [], []
+        if not to_run[experiment]['run']:
+            arg['n_runs'] = 1
         for _ in range(arg['n_runs']):
             model = ModelIAS(arg['emb_size'], out_slot, out_int, arg['hid_size'], vocab_len, pad_index=PAD_TOKEN,
                              bidirectional=arg['bidirectional'], dropout=arg['dropout']).to(DEVICE)
@@ -118,10 +120,13 @@ def run_experiments(to_run):
                 f.write(f'Slot F1: {slot_f1s.mean():.3f} +- {slot_f1s.std():.3f}\nIntent Acc: {intent_acc.mean():.3f} '
                         f'+- {intent_acc.std():.3f}\n')
         else:
-            print(f"Slot F1: {results_test['total']['f']}")
-            print(f"Intent Accuracy: {intent_test['accuracy']}")
+            if saved_model['results']:
+                print(f"[AVG] Slot F1: {saved_model['results']['Slot F1']}")
+                print(f"[AVG] Intent Accuracy: {saved_model['results']['Intent Acc']}")
+            print(f"Slot F1: {results_test['total']['f']:.3f}")
+            print(f"Intent Accuracy: {intent_test['accuracy']:.3f}")
             if to_run[experiment]['run']:
-                f.write(f"Slot F1: {results_test['total']['f']}\nIntent Accuracy: {intent_test['accuracy']}\n")
+                f.write(f"Slot F1: {results_test['total']['f']:.3f}\nIntent Accuracy: {intent_test['accuracy']:.3f}\n")
 
         if to_run[experiment]['run']:
             f.close()

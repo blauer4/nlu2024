@@ -5,6 +5,6 @@
 from functions import *
 
 if __name__ == "__main__":
-    to_run = {'BertJoint': {'dropout': 0.1, 'run': True}, }
+    to_run = {'BertJoint': {'dropout': 0.1, 'run': False}, }
 
     run_experiments(to_run)

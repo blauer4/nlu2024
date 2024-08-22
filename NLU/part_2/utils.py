@@ -5,13 +5,12 @@ import torch
 import torch.utils.data as data
 from collections import Counter
 from sklearn.model_selection import train_test_split
-import transformers
-from transformers import BertTokenizer
+from transformers import AutoTokenizer
 
 BERT_MODEL = "bert-base-uncased"
 DEVICE = 'cuda:0' if torch.cuda.is_available() else 'cpu'
 os.environ['CUDA_LAUNCH_BLOCKING'] = "1"  # Used to report errors on CUDA side
-tokenizer = BertTokenizer.from_pretrained(BERT_MODEL)
+tokenizer = AutoTokenizer.from_pretrained(BERT_MODEL)
 PAD_TOKEN = tokenizer.pad_token
 PAD_ID = tokenizer.pad_token_id
 UNK_TOKEN = tokenizer.unk_token
@@ -63,11 +62,6 @@ def divide_training_set(tmp_train_raw, test_raw):
 
     y_test = [x['intent'] for x in test_raw]
     return train_raw, val_raw, y_train, y_val, y_test
-
-
-"""
-Other codeblock
-"""
 
 
 class Lang():
@@ -145,6 +139,85 @@ class IntentsAndSlots(data.Dataset):
         return res
 
 
+class BERTIntentSlotDataset(data.Dataset):
+    def __init__(self, data, intent_label_map, slot_label_map):
+        """
+        Args:
+            data (list of dict): The dataset, where each item is a dict with 'utterance', 'intent', and 'slots'.
+            intent_label_map (dict): A mapping from intent labels to their corresponding IDs.
+            slot_label_map (dict): A mapping from slot labels to their corresponding IDs.
+        """
+        self.data = data
+        self.tokenizer = tokenizer
+        self.intent_label_map = intent_label_map
+        self.slot_label_map = slot_label_map
+        self.pad_token_label_id = PAD_ID
+
+    def __len__(self):
+        return len(self.data)
+
+    def __getitem__(self, idx):
+        # Extract the relevant data
+        utterance = self.data[idx]['utterance']
+        intent_label = self.intent_label_map[self.data[idx]['intent']]
+        slot_labels = self.data[idx]['slots']
+
+        tokenized = self.tokenizer(utterance, return_tensors='pt')
+
+        input_ids = tokenized['input_ids'][0]  # Remove batch dimension
+        attention_mask = tokenized['attention_mask'][0]  # Remove batch dimension
+
+        # Get the word to token mapping and original words
+        word_ids = tokenized.word_ids()
+
+        # Adjust word_ids to account for special tokens
+        delta = 0
+        prev_word = None
+        for i, w in enumerate(word_ids):
+            if w is None or w == 0:
+                continue
+            char_span = tokenized.word_to_chars(w)
+            if utterance[char_span[0] - 1] != ' ' and prev_word != w:
+                # check if there is a space before the word and the word before has it
+                delta += 1
+            prev_word = w
+            word_ids[i] = w - delta
+
+        # Prepare slot labels (align them with tokens)
+        aligned_labels = []
+        last_word_id = None
+        slot_labels_list = slot_labels.split()
+
+        for i, word_id in enumerate(word_ids):
+            if word_id is None:
+                # For special tokens, set the label to pad_token_label_id
+                aligned_labels.append(self.pad_token_label_id)
+            elif word_id != last_word_id:
+                # Only the first subtoken of a word gets the label
+                label = slot_labels_list[word_id]
+                aligned_labels.append(self.slot_label_map[label])
+            else:
+                # Subsequent subtokens get the padding label
+                aligned_labels.append(self.pad_token_label_id)
+            last_word_id = word_id
+
+        # Convert to tensor
+        slot_label_ids = torch.tensor(aligned_labels, dtype=torch.long)
+        intent_label = torch.tensor(intent_label, dtype=torch.long)
+        sentence = utterance.split()
+        if len(sentence) != (max(word_ids[1:-1]) + 1):
+            print("ERROR")
+            print(sentence)
+            print(word_ids)
+        return {
+            'input_ids': input_ids,
+            'attention_mask': attention_mask,
+            'intent_label': intent_label,
+            'slot_labels': slot_label_ids,
+            'sentence': sentence
+        }
+
+
 def collate_fn(data):
     def merge(sequences):
         '''
@@ -152,7 +225,6 @@ def collate_fn(data):
         '''
         lengths = [len(seq) for seq in sequences]
         max_len = 1 if max(lengths) == 0 else max(lengths)
-        attention_masks = torch.FloatTensor([[1 for i in range(len(seq))] + [0 for i in range(max_len - len(seq))]for seq in sequences])
         # So we create a matrix full of PAD_ID with the shape
         # batch_size X maximum length of a sequence
         padded_seqs = torch.LongTensor(len(sequences), max_len).fill_(PAD_ID)
@@ -161,28 +233,30 @@ def collate_fn(data):
             padded_seqs[i, :end] = seq  # We copy each sequence into the matrix
         # print(padded_seqs)
         padded_seqs = padded_seqs.detach()  # We remove these tensors from the computational graph
-        return padded_seqs, lengths, attention_masks
+        return padded_seqs, lengths
 
     # Sort data by seq lengths
-    data.sort(key=lambda x: len(x['utterance']), reverse=True)
+    data.sort(key=lambda x: len(x['input_ids']), reverse=True)
     new_item = {}
     for key in data[0].keys():
         new_item[key] = [d[key] for d in data]
 
     # We just need one length for packed pad seq, since len(utt) == len(slots)
-    src_utt, _, attention_masks = merge(new_item['utterance'])
-    y_slots, y_lengths, _ = merge(new_item["slots"])
-    intent = torch.LongTensor(new_item["intent"])
+    src_utt, _ = merge(new_item['input_ids'])
+    y_slots, y_lengths = merge(new_item["slot_labels"])
+    attention_mask, _ = merge(new_item["attention_mask"])
+    intent = torch.LongTensor(new_item["intent_label"])
 
-    attention_masks = attention_masks.to(DEVICE)
+    attention_mask = attention_mask.to(DEVICE)
     src_utt = src_utt.to(DEVICE)  # We load the Tensor on our selected device
     y_slots = y_slots.to(DEVICE)
     intent = intent.to(DEVICE)
     y_lengths = torch.LongTensor(y_lengths).to(DEVICE)
 
-    new_item['attention_masks'] = attention_masks
-    new_item["utterances"] = src_utt
-    new_item["intents"] = intent
-    new_item["y_slots"] = y_slots
-    new_item["slots_len"] = y_lengths
+    new_item['attention_mask'] = attention_mask
+    new_item["input_ids"] = src_utt
+    new_item["intent_labels"] = intent
+    new_item["slot_labels"] = y_slots
+    new_item["slot_len"] = y_lengths
     return new_item
+

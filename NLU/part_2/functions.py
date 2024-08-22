@@ -29,7 +29,7 @@ def run_experiments(to_run):
         'clip': 5,
         'dropout': 0,
         'epochs': 30,
-        'patience': 10,
+        'patience': 5,
         'run': False,
     }
 

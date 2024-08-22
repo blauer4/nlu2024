@@ -5,7 +5,7 @@
 from functions import *
 
 if __name__ == "__main__":
-    to_run = {'BertJoint': {'dropout': 0, 'run': True},
-              'BertJoint_dropout': {'dropout': 0.1, 'run': False}, }
+    to_run = {'BertJoint': {'dropout': 0, 'run': False},
+              'BertJoint_dropout': {'dropout': 0.5, 'run': False}, }
 
     run_experiments(to_run)

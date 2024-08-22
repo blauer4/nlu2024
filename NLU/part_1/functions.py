@@ -3,7 +3,6 @@ import copy
 import numpy as np
 import torch.optim as optim
 from datetime import datetime
-from torch.utils.tensorboard import SummaryWriter
 from sklearn.metrics import classification_report
 from torch.utils.data import DataLoader
 from tqdm import tqdm
@@ -94,9 +93,8 @@ def run_experiments(to_run):
             model = ModelIAS(arg['emb_size'], out_slot, out_int, arg['hid_size'], vocab_len, pad_index=PAD_TOKEN,
                              bidirectional=arg['bidirectional'], dropout=arg['dropout']).to(DEVICE)
             if to_run[experiment]['run']:
-                writer = SummaryWriter(log_dir=f"{save_path}runs/{experiment}/{strftime}/")
                 model.apply(init_weights)
-                results_test, intent_test = train((writer, file_path), lang, model, PAD_TOKEN, train_loader, val_loader,
+                results_test, intent_test = train(file_path, lang, model, PAD_TOKEN, train_loader, val_loader,
                                                   test_loader, arg['lr'], arg['clip'])
             else:
                 model.load_state_dict(saved_model['model'])
@@ -132,13 +130,7 @@ def run_experiments(to_run):
             f.close()
 
 
-def log_values(writer, step, loss, prefix, f1_score=None):
-    writer.add_scalar(f"{prefix}/loss", loss, step)
-    if f1_score is not None:
-        writer.add_scalar(f"{prefix}/f1_score", f1_score, step)
-
-
-def train(logging, lang, model, PAD_TOKEN, train_loader, val_loader, test_loader, lr, clip, epochs=200, patience=3):
+def train(file_path, lang, model, PAD_TOKEN, train_loader, val_loader, test_loader, lr, clip, epochs=200, patience=3):
     optimizer = optim.Adam(model.parameters(), lr=lr)
     criterion_slots = nn.CrossEntropyLoss(ignore_index=PAD_TOKEN)
     criterion_intents = nn.CrossEntropyLoss()  # Because we do not have the pad token
@@ -148,13 +140,11 @@ def train(logging, lang, model, PAD_TOKEN, train_loader, val_loader, test_loader
     sampled_epochs = []
     best_f1 = 0
     best_model = None
-    writer, file_path = logging
 
     pbar = tqdm(range(1, epochs))
 
     for x in pbar:
         loss = train_loop(train_loader, optimizer, criterion_slots, criterion_intents, model, clip=clip)
-        log_values(writer, x, np.asarray(loss).mean(), 'train')
         if x % 5 == 0:  # We check the performance every 5 epochs
             sampled_epochs.append(x)
             losses_train.append(np.asarray(loss).mean())
@@ -162,7 +152,6 @@ def train(logging, lang, model, PAD_TOKEN, train_loader, val_loader, test_loader
             losses_val.append(np.asarray(loss_val).mean())
 
             f1 = results_val['total']['f']
-            log_values(writer, x, np.asarray(loss_val).mean(), 'val', f1)
             # For decreasing the patience you can also use the average between slot f1 and intent accuracy
             if f1 > best_f1:
                 best_f1 = f1
@@ -179,7 +168,6 @@ def train(logging, lang, model, PAD_TOKEN, train_loader, val_loader, test_loader
         "lang": lang,
     }
     torch.save(to_save, file_path)
-    writer.close()
     results_test, intent_test, _ = eval_loop(test_loader, criterion_slots, criterion_intents, best_model, lang)
     return results_test, intent_test
 

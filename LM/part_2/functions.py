@@ -7,7 +7,6 @@ from functools import partial
 import numpy as np
 import torch.optim as optim
 from torch.utils.data import DataLoader
-from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
 
 from main import DEVICE
@@ -78,7 +77,7 @@ def run_experiments(to_run):
     for experiment in to_run:
         arg = default_options | to_run[experiment]
         print(f"Running experiment {experiment}")
-        if to_run[experiment]:
+        if to_run[experiment]['run']:
             model = LM_LSTM(arg['emb_size'], arg['hid_size'], vocab_len, pad_index=lang.word2id["<pad>"],
                             out_dropout=arg['out_dropout'], emb_dropout=arg['emb_dropout'],
                             variational_dropout=arg['variational_dropout'], weight_tying=arg['weight_tying']).to(DEVICE)
@@ -90,16 +89,11 @@ def run_experiments(to_run):
             model = LM_LSTM(arg['emb_size'], arg['hid_size'], vocab_len, pad_index=lang.word2id["<pad>"],
                             out_dropout=arg['out_dropout'], emb_dropout=arg['emb_dropout'],
                             variational_dropout=arg['variational_dropout'], weight_tying=arg['weight_tying']).to(DEVICE)
-            model.load_state_dict(torch.load('./bin/' + experiment + '.pt'))
+            model.load_state_dict(torch.load('./bin/' + experiment + '.pt', map_location=torch.device(DEVICE)))
             optimizer = arg['optimizer'](model.parameters(), lr=arg['lr'])
             eval_criterion = nn.CrossEntropyLoss(ignore_index=lang.word2id["<pad>"], reduction='sum')
             test_ppl, _ = eval_loop(test_loader, eval_criterion, model, optimizer)
             print(f'Test ppl: {test_ppl:2f}')
-
-
-def log_values(writer, step, loss, perplexity, prefix):
-    writer.add_scalar(f"{prefix}/loss", loss, step)
-    writer.add_scalar(f"{prefix}/perplexity", perplexity, step)
 
 
 def train_loop(data, optimizer, criterion, model, clip=5, scheduler=None):
@@ -162,7 +156,6 @@ def main_exp(save_path, exp_name, model, optimizer, clip, train_loader, val_load
     d = datetime.now()
     strftime = d.strftime("%Y-%m-%d_%H-%M")
 
-    writer = SummaryWriter(log_dir=f"{save_path}runs/{exp_name}/{strftime}")
     criterion_train = nn.CrossEntropyLoss(ignore_index=lang.word2id["<pad>"])
     criterion_eval = nn.CrossEntropyLoss(ignore_index=lang.word2id["<pad>"], reduction='sum')
 
@@ -186,9 +179,6 @@ def main_exp(save_path, exp_name, model, optimizer, clip, train_loader, val_load
             losses_train.append(np.asarray(train_loss).mean())
             val_ppl, val_loss = eval_loop(val_loader, criterion_eval, model, optimizer)
             val_losses.append(np.asarray(val_loss).mean())
-
-            log_values(writer, epoch, train_loss, train_ppl, "Train")
-            log_values(writer, epoch, val_loss, val_ppl, "Validation")
 
             pbar.set_description("PPL: %f" % val_ppl)
             torch.save(model.state_dict(), file_path)
@@ -216,4 +206,3 @@ def main_exp(save_path, exp_name, model, optimizer, clip, train_loader, val_load
     f.write(f'Test ppl: {final_ppl:2f}')
     torch.save(best_model.state_dict(), file_path)
     f.close()
-    writer.close()
